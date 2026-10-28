@@ -1,0 +1,22 @@
+const express = require('express');
+const supabase = require('../supabase');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+const router = express.Router();
+router.use(requireAuth, requireAdmin);
+function validateEvent(b) {
+  const title = typeof b.title === 'string' ? b.title.trim() : '';
+  const description = typeof b.description === 'string' ? b.description.trim() : '';
+  const venue = typeof b.venue === 'string' ? b.venue.trim() : '';
+  const categories = ['Technology','Cultural','Sports','Workshop','Other'];
+  const date = typeof b.event_date === 'string' ? new Date(b.event_date) : null;
+  const capacity = Number(b.capacity), fee = Number(b.fee);
+  if (title.length < 3 || title.length > 120 || description.length < 5 || description.length > 1000 || venue.length < 2 || venue.length > 160 || !categories.includes(b.category) || !date || Number.isNaN(date.getTime()) || date <= new Date() || !Number.isInteger(capacity) || capacity < 1 || capacity > 10000 || !Number.isFinite(fee) || fee < 0 || fee > 100000) return { error:'Provide a valid title, category, description, future date, venue, capacity (1–10000), and fee (0–100000).' };
+  return { value:{ title,category:b.category,description,event_date:date.toISOString(),venue,capacity,fee } };
+}
+router.get('/events', async (req,res,next) => { try { const {data,error}=await supabase.from('events').select('id,title,category,description,event_date,venue,capacity,fee,status,registrations(count)').order('created_at',{ascending:false}); if(error)throw error; res.json({events:(data||[]).map(e=>({...e,registration_count:e.registrations?.[0]?.count||0,registrations:undefined}))}); } catch(e){next(e);} });
+router.post('/events', async (req,res,next) => { try { const checked=validateEvent(req.body); if(checked.error)return res.status(400).json({error:checked.error}); const {data,error}=await supabase.from('events').insert({...checked.value,created_by:req.auth.id}).select('*').single(); if(error)throw error; res.status(201).json({event:data}); } catch(e){next(e);} });
+router.patch('/events/:id', async (req,res,next) => { try { if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return res.status(400).json({error:'Invalid event ID.'}); const checked=validateEvent(req.body); if(checked.error)return res.status(400).json({error:checked.error}); const {data,error}=await supabase.from('events').update(checked.value).eq('id',req.params.id).eq('status','published').select('*').maybeSingle(); if(error){if(error.code==='23514')return res.status(409).json({error:'Capacity cannot be lower than the number of existing registrations.'});throw error;} if(!data)return res.status(404).json({error:'Published event not found.'}); res.json({event:data}); } catch(e){next(e);} });
+router.delete('/events/:id', async (req,res,next) => { try { if(!/^[0-9a-f-]{36}$/i.test(req.params.id))return res.status(400).json({error:'Invalid event ID.'}); const {data,error}=await supabase.from('events').update({status:'cancelled'}).eq('id',req.params.id).eq('status','published').select('id').maybeSingle(); if(error)throw error; if(!data)return res.status(404).json({error:'Published event not found.'}); const {error:regError}=await supabase.from('registrations').update({status:'cancelled'}).eq('event_id',req.params.id).eq('status','confirmed'); if(regError)throw regError; res.json({message:'Event cancelled.'}); } catch(e){next(e);} });
+router.get('/events/:id/participants', async (req,res,next) => { try { const {data,error}=await supabase.from('registrations').select('id,status,created_at,profiles(name,email,student_id,department)').eq('event_id',req.params.id).eq('status','confirmed').order('created_at',{ascending:true}); if(error)throw error; res.json({participants:(data||[]).map(r=>({id:r.id,status:r.status,created_at:r.created_at,name:r.profiles?.name,email:r.profiles?.email,student_id:r.profiles?.student_id||'',department:r.profiles?.department||''}))}); } catch(e){next(e);} });
+router.get('/registrations', async (req,res,next) => { try { const {data,error}=await supabase.from('registrations').select('id,status,created_at,events(title),profiles(name,email,student_id,department)').order('created_at',{ascending:false}); if(error)throw error; res.json({registrations:(data||[]).map(r=>({id:r.id,status:r.status,created_at:r.created_at,event_title:r.events?.title||'Event unavailable',name:r.profiles?.name,email:r.profiles?.email,student_id:r.profiles?.student_id||'',department:r.profiles?.department||''}))}); } catch(e){next(e);} });
+module.exports = router;

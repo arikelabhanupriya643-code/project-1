@@ -1,0 +1,10 @@
+{
+  "name": "college-event-management-and-registration-system",
+  "version": "1.0.0",
+  "description": "College Event Management and Registration System",
+  "private": true,
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js", "check": "node --check server.js && node --check routes/auth.js && node --check routes/events.js && node --check routes/registrations.js && node --check routes/admin.js && node --check middleware/auth.js" },
+  "engines": { "node": ">=20" },
+  "dependencies": { "@supabase/supabase-js": "^2.57.0", "bcryptjs": "^3.0.2", "cookie-parser": "^1.4.7", "dotenv": "^16.6.1", "express": "^5.1.0", "express-rate-limit": "^8.1.0", "helmet": "^8.1.0", "jsonwebtoken": "^9.0.2" }
+}
